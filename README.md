@@ -1,5 +1,6 @@
 # roster-lint
 Live page: https://aamirtechs.github.io/roster-lint/
+Use it in your browser: the Pages site above runs the full tool locally, no install needed.
 
 Lint a shift roster CSV before you publish it: clopening shifts, overtime breaches, double bookings, uncovered required slots and unfair weekend distribution, in one clear report for ops and support team leads.
 

@@ -46,22 +46,44 @@ export function shiftTimes(row) {
   return { startMs, endMs, hours: (endMs - startMs) / 3600000 };
 }
 
-export function loadRoster(file) {
-  const rows = parseCsv(fs.readFileSync(file, "utf8"));
+export function rowsToShifts(rows) {
   return rows.map(r => {
     const { startMs, endMs, hours } = shiftTimes(r);
     return { person: r.person, date: r.date, start: r.start, end: r.end, role: r.role, startMs, endMs, hours };
   });
 }
 
+export function rosterFromCsvText(text) {
+  return rowsToShifts(parseCsv(text));
+}
+
+export function loadRoster(file) {
+  return rosterFromCsvText(fs.readFileSync(file, "utf8"));
+}
+
 export function defaultConfig() {
   return { minRestHours: 11, maxWeeklyHours: 40, coverage: [], coverageOverrides: {} };
 }
 
+export function normalizeConfig(raw) {
+  const obj = raw || {};
+  return { ...defaultConfig(), ...obj, coverage: obj.coverage || [], coverageOverrides: obj.coverageOverrides || obj.overrides || {} };
+}
+
+export function parseConfigText(text) {
+  return normalizeConfig(JSON.parse(text));
+}
+
 export function loadConfig(file) {
   if (!file) return defaultConfig();
-  const raw = JSON.parse(fs.readFileSync(file, "utf8"));
-  return { ...defaultConfig(), ...raw, coverage: raw.coverage || [], coverageOverrides: raw.coverageOverrides || raw.overrides || {} };
+  return parseConfigText(fs.readFileSync(file, "utf8"));
+}
+
+export function lintCsvText(csvText, config) {
+  const shifts = rosterFromCsvText(csvText);
+  const cfg = config ? normalizeConfig(config) : defaultConfig();
+  const result = lintRoster(shifts, cfg);
+  return { shifts, config: cfg, result, findingsCsv: findingsToCsv(result.findings), report: buildReport(shifts, result, cfg) };
 }
 
 export function weekKey(dateStr) {

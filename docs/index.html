@@ -76,6 +76,22 @@ footer .links a{margin:0 10px}
   section{padding:24px 20px}
   .grid{grid-template-columns:1fr}
 }
+
+.tool label{display:block;font-weight:600;font-size:.92rem;margin:14px 0 6px}
+.tool input[type="file"]{width:100%;padding:14px;border:1.5px dashed #b9c6d4;border-radius:9px;background:#fbfcfe}
+.tool textarea{width:100%;min-height:110px;padding:11px 12px;border:1px solid var(--line);border-radius:9px;font-family:Consolas,'Liberation Mono',monospace;font-size:.85rem;background:#fff;color:var(--ink)}
+.tool input[type="text"],.tool input[type="number"],.tool select{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:9px;font:inherit;background:#fff;color:var(--ink)}
+.tool .row2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+button.go{background:var(--gold);color:#171106;border:0;font:inherit;font-weight:700;padding:13px 26px;border-radius:10px;cursor:pointer;width:100%;font-size:1.02rem;margin-top:18px}
+button.go:hover{background:var(--gold2)}
+button.dl{background:var(--navy);color:#fff;border:0;font:inherit;font-weight:600;padding:10px 18px;border-radius:9px;cursor:pointer;margin:10px 8px 0 0}
+#status{margin-top:14px;font-weight:600}
+#status.error{color:#b3261e}
+pre.report{background:#0e1622;color:#d7e3f2;border-radius:12px;padding:18px;overflow:auto;max-height:520px;font-size:.82rem;line-height:1.55;white-space:pre-wrap;box-shadow:none}
+.dropzone.drag{outline:2px solid var(--gold);outline-offset:3px;border-radius:10px}
+.hidden{display:none}
+.hintline{color:var(--muted);font-size:.86rem;margin-top:5px}
+@media (max-width:680px){.tool .row2{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -86,7 +102,32 @@ footer .links a{margin:0 10px}
   <a class="btn" href="https://github.com/aamirtechs/roster-lint">View source on GitHub</a>
 </header>
 <main class="wrap">
-  <section>
+<section class="tool">
+    <h2>Run it in your browser</h2>
+    <p class="note">Runs fully in your browser, files never leave your device.</p>
+    <div class="dropzone">
+      <label for="rosterFile">1. Roster export (.csv)</label>
+      <input type="file" id="rosterFile" accept=".csv,.txt">
+      <div class="hintline">Drag and drop the file onto this box, or use the picker. Columns: person, date, start, end, role. Times are HH:MM, and an end before the start counts as overnight.</div>
+    </div>
+    <label for="rosterPaste">Or paste the roster CSV</label>
+    <textarea id="rosterPaste" placeholder="person,date,start,end,role"></textarea>
+    <div class="dropzone">
+      <label for="configFile">2. Config (.json, optional)</label>
+      <input type="file" id="configFile" accept=".json">
+      <div class="hintline">Minimum rest hours, maximum weekly hours and coverage rules. Leave empty to use the config below, which matches examples/config.json. Clear the box entirely to run on the built in defaults (11 hours rest, 40 hours per week, no coverage rules).</div>
+    </div>
+    <label for="configText">Config JSON (edit or replace)</label>
+    <textarea id="configText" style="min-height:170px"></textarea>
+    <button class="go" id="runBtn" type="button">Lint roster</button>
+    <div id="status" role="status"></div>
+    <div id="downloads"></div>
+    <div id="reportWrap" class="hidden">
+      <h2 style="margin-top:24px">Lint report</h2>
+      <pre class="report" id="report"></pre>
+    </div>
+  </section>
+<section>
     <h2>What it does</h2>
     <div class="grid">
       <div class="card">Clopen detection: rest between consecutive shifts below the configured minimum, 11 hours by default</div>
@@ -109,5 +150,63 @@ node src/cli.js examples/roster.csv --config examples/config.json --out-dir out<
   <p>Built by Amir Hussain, operations manager and founder of AamirTechs.</p>
   <p class="links"><a href="https://aamirtechs.com">AamirTechs: operations, customer support and e-commerce services</a> <a href="https://github.com/aamirtechs">More open source tools</a></p>
 </footer>
+<script src="app.js"></script>
+<script>
+(function () {
+  var defaultConfig = {
+    minRestHours: 11,
+    maxWeeklyHours: 40,
+    coverage: [{ role: "support", minPeople: 2 }, { role: "lead", minPeople: 1 }],
+    coverageOverrides: { "2026-01-10": [{ role: "support", minPeople: 1 }, { role: "lead", minPeople: 1 }] }
+  };
+  document.getElementById('configText').value = JSON.stringify(defaultConfig, null, 2);
+  document.querySelectorAll('.dropzone').forEach(function (zone) {
+    var input = zone.querySelector('input[type="file"]');
+    zone.addEventListener('dragover', function (e) { e.preventDefault(); zone.classList.add('drag'); });
+    zone.addEventListener('dragleave', function () { zone.classList.remove('drag'); });
+    zone.addEventListener('drop', function (e) { e.preventDefault(); zone.classList.remove('drag'); if (e.dataTransfer.files.length) input.files = e.dataTransfer.files; });
+  });
+  function download(name, text, type) {
+    var blob = new Blob([text], { type: type || 'text/plain;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
+  }
+  document.getElementById('runBtn').addEventListener('click', async function () {
+    var status = document.getElementById('status');
+    var downloads = document.getElementById('downloads');
+    var reportWrap = document.getElementById('reportWrap');
+    status.className = ''; status.textContent = ''; downloads.innerHTML = ''; reportWrap.classList.add('hidden');
+    try {
+      var csvText = '';
+      var file = document.getElementById('rosterFile').files[0];
+      if (file) csvText = await file.text();
+      else csvText = document.getElementById('rosterPaste').value;
+      if (!csvText.trim()) { status.className = 'error'; status.textContent = 'Choose a roster CSV file or paste its contents first.'; return; }
+      var config = null;
+      var configFile = document.getElementById('configFile').files[0];
+      if (configFile) config = window.RosterLint.parseConfigText(await configFile.text());
+      else if (document.getElementById('configText').value.trim()) config = window.RosterLint.parseConfigText(document.getElementById('configText').value);
+      var result = window.RosterLint.lintCsvText(csvText, config);
+      var counts = {};
+      result.result.findings.forEach(function (f) { counts[f.type] = (counts[f.type] || 0) + 1; });
+      var parts = Object.keys(counts).sort().map(function (k) { return k + ': ' + counts[k]; }).join(', ');
+      var hasError = result.result.findings.some(function (f) { return f.severity === 'error'; });
+      status.textContent = 'Checked ' + result.shifts.length + ' shifts for ' + result.result.weekendCounts.size + ' people. Findings: ' + result.result.findings.length + (parts ? ' (' + parts + ')' : '') + '.' + (hasError ? ' Error findings present, the CLI would exit with code 1.' : ' No errors, the CLI would exit with code 0.');
+      var b1 = document.createElement('button'); b1.className = 'dl'; b1.type = 'button'; b1.textContent = 'Download findings.csv';
+      b1.addEventListener('click', function () { download('findings.csv', result.findingsCsv, 'text/csv;charset=utf-8'); });
+      var b2 = document.createElement('button'); b2.className = 'dl'; b2.type = 'button'; b2.textContent = 'Download report.md';
+      b2.addEventListener('click', function () { download('report.md', result.report, 'text/markdown;charset=utf-8'); });
+      downloads.appendChild(b1); downloads.appendChild(b2);
+      document.getElementById('report').textContent = result.report;
+      reportWrap.classList.remove('hidden');
+    } catch (e) {
+      status.className = 'error';
+      status.textContent = e.message;
+    }
+  });
+})();
+</script>
 </body>
 </html>
