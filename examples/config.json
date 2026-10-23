@@ -1,0 +1,14 @@
+{
+  "minRestHours": 11,
+  "maxWeeklyHours": 40,
+  "coverage": [
+    { "role": "support", "minPeople": 2 },
+    { "role": "lead", "minPeople": 1 }
+  ],
+  "coverageOverrides": {
+    "2026-01-10": [
+      { "role": "support", "minPeople": 1 },
+      { "role": "lead", "minPeople": 1 }
+    ]
+  }
+}
